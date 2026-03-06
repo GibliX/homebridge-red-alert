@@ -1838,5 +1838,251 @@ class RedAlertPlugin {
 module.exports = (api) => {
   Service = api.hap.Service;
   Characteristic = api.hap.Characteristic;
+  UUIDGen = api.hap.uuid;
+
+  // Register main accessory (sensors)
   api.registerAccessory("homebridge-red-alert", "RedAlert", RedAlertPlugin);
+
+  // Register platform for camera doorbell
+  api.registerPlatform("homebridge-red-alert", "RedAlertCamera", RedAlertCameraPlatform);
+};
+
+/**
+ * Camera Platform for Apple TV Doorbell notifications
+ * Creates a separate camera accessory that shows PiP on Apple TV
+ */
+class RedAlertCameraPlatform {
+  constructor(log, config, api) {
+    this.log = log;
+    this.config = config || {};
+    this.api = api;
+    this.accessories = [];
+
+    this.name = config.name || "Red Alert Camera";
+    this.videoProcessor = config.videoProcessor || "ffmpeg";
+    this.mediaPath = config.mediaPath || path.join(__dirname, "media");
+
+    // Alert state
+    this.currentState = "idle"; // idle, pre-alert, alert
+
+    if (api) {
+      api.on("didFinishLaunching", () => {
+        this.log.info("Red Alert Camera Platform loaded");
+        this.setupCamera();
+      });
+    }
+  }
+
+  setupCamera() {
+    const uuid = UUIDGen.generate(this.name);
+    const accessory = new this.api.platformAccessory(this.name, uuid, this.api.hap.Categories.VIDEO_DOORBELL);
+
+    // Add accessory info
+    accessory.getService(Service.AccessoryInformation)
+      .setCharacteristic(Characteristic.Manufacturer, "Red Alert")
+      .setCharacteristic(Characteristic.Model, "Siren Doorbell")
+      .setCharacteristic(Characteristic.SerialNumber, "RA-CAM-001");
+
+    // Create doorbell service
+    const doorbellService = new Service.Doorbell(this.name);
+    accessory.addService(doorbellService);
+
+    // Create camera controller
+    const delegate = new RedAlertStreamingDelegate(this.api.hap, this.config, this.log, this);
+
+    const options = {
+      cameraStreamCount: 2,
+      delegate: delegate,
+      streamingOptions: {
+        supportedCryptoSuites: [this.api.hap.SRTPCryptoSuites.AES_CM_128_HMAC_SHA1_80],
+        video: {
+          resolutions: [
+            [1920, 1080, 30],
+            [1280, 720, 30],
+            [640, 480, 30],
+            [640, 360, 30],
+            [320, 240, 15],
+          ],
+          codec: {
+            profiles: [this.api.hap.H264Profile.BASELINE],
+            levels: [this.api.hap.H264Level.LEVEL3_1],
+          },
+        },
+        audio: undefined, // No audio for simplicity
+      },
+    };
+
+    const cameraController = new this.api.hap.CameraController(options);
+    accessory.configureController(cameraController);
+
+    this.cameraController = cameraController;
+    this.doorbellService = doorbellService;
+    this.delegate = delegate;
+
+    // Publish as external accessory
+    this.api.publishExternalAccessories("homebridge-red-alert", [accessory]);
+    this.log.info("Red Alert Camera published - add it in Home app using code from Homebridge");
+  }
+
+  // Called by main plugin to ring doorbell
+  ringDoorbell(alertType) {
+    if (!this.doorbellService) return;
+
+    // Update camera state
+    if (alertType === "primary" || alertType === "test") {
+      this.currentState = "alert";
+      if (this.delegate) this.delegate.setCurrentState("alert");
+    } else if (alertType === "early-warning") {
+      this.currentState = "pre-alert";
+      if (this.delegate) this.delegate.setCurrentState("pre-alert");
+    }
+
+    this.log.info(`Ringing doorbell for ${alertType}, camera state: ${this.currentState}`);
+
+    // Trigger doorbell
+    this.doorbellService
+      .getCharacteristic(Characteristic.ProgrammableSwitchEvent)
+      .updateValue(Characteristic.ProgrammableSwitchEvent.SINGLE_PRESS);
+
+    // Reset to idle after 60 seconds
+    setTimeout(() => {
+      this.currentState = "idle";
+      if (this.delegate) this.delegate.setCurrentState("idle");
+    }, 60000);
+  }
+
+  configureAccessory(accessory) {
+    this.accessories.push(accessory);
+  }
+}
+
+/**
+ * Streaming delegate for camera
+ */
+class RedAlertStreamingDelegate {
+  constructor(hap, config, log, platform) {
+    this.hap = hap;
+    this.log = log;
+    this.platform = platform;
+    this.videoProcessor = config.videoProcessor || "ffmpeg";
+    this.mediaPath = config.mediaPath || path.join(__dirname, "media");
+
+    this.currentState = "idle";
+    this.pendingSessions = new Map();
+    this.ongoingSessions = new Map();
+  }
+
+  setCurrentState(state) {
+    this.currentState = state;
+  }
+
+  getCurrentImage() {
+    switch (this.currentState) {
+      case "alert":
+        return path.join(this.mediaPath, "alert-still.png");
+      case "pre-alert":
+        return path.join(this.mediaPath, "pre-alert.png");
+      default:
+        return path.join(this.mediaPath, "idle.png");
+    }
+  }
+
+  handleSnapshotRequest(request, callback) {
+    const currentImage = this.getCurrentImage();
+    this.log.debug(`Snapshot: ${request.width}x${request.height}, state: ${this.currentState}`);
+
+    const ffmpegArgs = [
+      "-i", currentImage,
+      "-vf", `scale=${request.width}:${request.height}`,
+      "-frames:v", "1",
+      "-f", "image2",
+      "-"
+    ];
+
+    const ffmpeg = spawn(this.videoProcessor, ffmpegArgs, { env: process.env });
+    let imageBuffer = Buffer.alloc(0);
+
+    ffmpeg.stdout.on("data", (data) => {
+      imageBuffer = Buffer.concat([imageBuffer, data]);
+    });
+
+    ffmpeg.on("close", (code) => {
+      if (code === 0 && imageBuffer.length > 0) {
+        callback(undefined, imageBuffer);
+      } else {
+        callback(new Error("Snapshot failed"));
+      }
+    });
+
+    ffmpeg.on("error", (error) => {
+      callback(error);
+    });
+  }
+
+  prepareStream(request, callback) {
+    const sessionInfo = {
+      address: request.targetAddress,
+      videoPort: request.video.port,
+      videoSRTP: Buffer.concat([request.video.srtp_key, request.video.srtp_salt]),
+      videoSSRC: this.hap.CameraController.generateSynchronisationSource(),
+    };
+
+    this.pendingSessions.set(request.sessionID, sessionInfo);
+
+    callback(undefined, {
+      video: {
+        port: request.video.port,
+        ssrc: sessionInfo.videoSSRC,
+        srtp_key: request.video.srtp_key,
+        srtp_salt: request.video.srtp_salt,
+      },
+    });
+  }
+
+  handleStreamRequest(request, callback) {
+    const sessionId = request.sessionID;
+
+    if (request.type === this.hap.StreamRequestTypes.START) {
+      const session = this.pendingSessions.get(sessionId);
+      if (!session) {
+        callback(new Error("No session"));
+        return;
+      }
+
+      const currentImage = this.getCurrentImage();
+      const ffmpegArgs = [
+        "-loop", "1",
+        "-i", currentImage,
+        "-vf", `scale=${request.video.width}:${request.video.height}`,
+        "-vcodec", "libx264",
+        "-pix_fmt", "yuv420p",
+        "-r", String(Math.min(request.video.fps, 15)),
+        "-tune", "stillimage",
+        "-preset", "ultrafast",
+        "-b:v", `${request.video.max_bit_rate}k`,
+        "-payload_type", "99",
+        "-ssrc", session.videoSSRC.toString(),
+        "-f", "rtp",
+        "-srtp_out_suite", "AES_CM_128_HMAC_SHA1_80",
+        "-srtp_out_params", session.videoSRTP.toString("base64"),
+        `srtp://${session.address}:${session.videoPort}?rtcpport=${session.videoPort}&pkt_size=1316`,
+      ];
+
+      const ffmpeg = spawn(this.videoProcessor, ffmpegArgs, { env: process.env });
+      ffmpeg.on("close", () => this.ongoingSessions.delete(sessionId));
+      this.ongoingSessions.set(sessionId, ffmpeg);
+      this.pendingSessions.delete(sessionId);
+      callback();
+
+    } else if (request.type === this.hap.StreamRequestTypes.STOP) {
+      const ffmpeg = this.ongoingSessions.get(sessionId);
+      if (ffmpeg) {
+        ffmpeg.kill("SIGKILL");
+        this.ongoingSessions.delete(sessionId);
+      }
+      callback();
+    } else {
+      callback();
+    }
+  }
 };
