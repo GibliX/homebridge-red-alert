@@ -25,8 +25,10 @@ const compression = require("compression");
 const ChromecastAPI = require("chromecast-api");
 const os = require("os");
 const crypto = require("crypto");
+const { spawn } = require("child_process");
+const ip = require("ip");
 
-let Service, Characteristic;
+let Service, Characteristic, UUIDGen, StreamController;
 
 // Alert types and their canonical titles (in Hebrew)
 const ALERT_TYPES = {
@@ -359,6 +361,16 @@ class RedAlertPlugin {
     this.tzofarClient = null;
     this.devices = [];
 
+    // --- Apple TV Doorbell Configuration
+    this.useAppleTVDoorbell = config.appleTVDoorbell?.enabled === true;
+    this.doorbellSource = config.appleTVDoorbell?.videoSource ||
+      `-loop 1 -i ${path.join(__dirname, "media", "alert-still.png")}`;
+    this.doorbellStillSource = config.appleTVDoorbell?.stillImageSource ||
+      `-i ${path.join(__dirname, "media", "alert-still.png")}`;
+    this.videoProcessor = config.appleTVDoorbell?.videoProcessor || "ffmpeg";
+    this.doorbellThrottle = (config.appleTVDoorbell?.throttleSeconds || 10) * 1000;
+    this.lastDoorbellRing = 0;
+
     // --- HomeKit services
     this.service = new Service.ContactSensor(this.name);
     this.testSwitchService = new Service.Switch(`${this.name} Test`, "test");
@@ -373,6 +385,18 @@ class RedAlertPlugin {
       `${this.name} Exit Notification`,
       "exit-notification"
     );
+
+    // --- Apple TV Doorbell service (triggers PiP overlay on Apple TV)
+    if (this.useAppleTVDoorbell) {
+      this.doorbellService = new Service.Doorbell(`${this.name} Doorbell`);
+      this.doorbellService
+        .getCharacteristic(Characteristic.ProgrammableSwitchEvent)
+        .on("get", this.handleDoorbellGet.bind(this));
+
+      // Camera streaming for doorbell
+      this.pendingSessions = {};
+      this.ongoingSessions = {};
+    }
 
     // --- Startup logic
     if (this.api) {
@@ -572,13 +596,13 @@ class RedAlertPlugin {
       this.stopExitNotificationPlayback();
     }
 
-    this.log.info(`🚨 PRIMARY ALERT TRIGGERED (${threatInfo.name})`);
-    this.log.info(`📍 Areas: ${debouncedCities.join(", ")}`);
+    this.log.info(`PRIMARY ALERT TRIGGERED (${threatInfo.name})`);
+    this.log.info(`Areas: ${debouncedCities.join(", ")}`);
     this.log.info(
-      `⚠️ Threat Level: ${alertData.threat} (Priority: ${threatInfo.priority})`
+      `Threat Level: ${alertData.threat} (Priority: ${threatInfo.priority})`
     );
     this.log.info(
-      `⏰ Time: ${new Date().toLocaleString("en-US", {
+      `Time: ${new Date().toLocaleString("en-US", {
         timeZone: "Asia/Jerusalem",
       })} (Israel time)`
     );
@@ -590,6 +614,9 @@ class RedAlertPlugin {
       Characteristic.ContactSensorState,
       Characteristic.ContactSensorState.CONTACT_NOT_DETECTED
     );
+
+    // Ring Apple TV doorbell for PiP overlay notification
+    this.ringDoorbell(ALERT_TYPES.PRIMARY, debouncedCities);
 
     if (this.useChromecast) {
       this.playChromecastMedia(ALERT_TYPES.PRIMARY);
@@ -860,7 +887,7 @@ class RedAlertPlugin {
     const informationService = new Service.AccessoryInformation()
       .setCharacteristic(Characteristic.Manufacturer, "Homebridge")
       .setCharacteristic(Characteristic.Model, "Red Alert Tzofar")
-      .setCharacteristic(Characteristic.SerialNumber, "4.0.1");
+      .setCharacteristic(Characteristic.SerialNumber, "4.1.0");
 
     this.service
       .getCharacteristic(Characteristic.ContactSensorState)
@@ -872,13 +899,29 @@ class RedAlertPlugin {
       .getCharacteristic(Characteristic.ContactSensorState)
       .on("get", this.getExitNotificationState.bind(this));
 
-    return [
+    const services = [
       informationService,
       this.service,
       this.testSwitchService,
       this.earlyWarningService,
       this.exitNotificationService,
     ];
+
+    // Add doorbell service if enabled
+    if (this.useAppleTVDoorbell && this.doorbellService) {
+      services.push(this.doorbellService);
+      this.log.info("Apple TV doorbell service enabled");
+    }
+
+    return services;
+  }
+
+  /**
+   * Configure camera source for doorbell streaming
+   * Called by Homebridge when accessory is published
+   */
+  configureCameraSource(cameraSource) {
+    this.cameraSource = cameraSource;
   }
 
   getAlertState(callback) {
@@ -910,7 +953,7 @@ class RedAlertPlugin {
 
   handleTestSwitch(on, callback) {
     if (on) {
-      this.log.info("🧪 Running alert test");
+      this.log.info("Running alert test");
       this.triggerTest();
       setTimeout(() => {
         this.testSwitchService.updateCharacteristic(Characteristic.On, false);
@@ -919,8 +962,208 @@ class RedAlertPlugin {
     callback(null);
   }
 
+  // --- Apple TV Doorbell Methods ---
+
+  handleDoorbellGet(callback) {
+    callback(null, null);
+  }
+
+  /**
+   * Ring the doorbell to trigger Apple TV PiP notification
+   * Throttled to prevent excessive ringing
+   */
+  ringDoorbell(alertType, cities) {
+    if (!this.useAppleTVDoorbell || !this.doorbellService) {
+      return;
+    }
+
+    const now = Date.now();
+    if (now - this.lastDoorbellRing < this.doorbellThrottle) {
+      this.log.debug(
+        `Doorbell ring throttled (${Math.ceil(
+          (this.doorbellThrottle - (now - this.lastDoorbellRing)) / 1000
+        )}s remaining)`
+      );
+      return;
+    }
+
+    this.lastDoorbellRing = now;
+    this.log.info(
+      `Ringing Apple TV doorbell for ${alertType}: ${cities.join(", ")}`
+    );
+
+    // Trigger the doorbell event - this causes Apple TV to show PiP notification
+    this.doorbellService
+      .getCharacteristic(Characteristic.ProgrammableSwitchEvent)
+      .setValue(Characteristic.ProgrammableSwitchEvent.SINGLE_PRESS);
+  }
+
+  /**
+   * Handle snapshot requests for the doorbell camera
+   */
+  handleSnapshotRequest(request, callback) {
+    const resolution = `${request.width}x${request.height}`;
+    this.log.debug(`Doorbell snapshot requested: ${resolution}`);
+
+    const ffmpegArgs = `${this.doorbellStillSource} -t 1 -s ${resolution} -f image2 -`.split(" ");
+
+    const ffmpeg = spawn(this.videoProcessor, ffmpegArgs, {
+      env: process.env,
+    });
+
+    let imageBuffer = Buffer.alloc(0);
+
+    ffmpeg.stdout.on("data", (data) => {
+      imageBuffer = Buffer.concat([imageBuffer, data]);
+    });
+
+    ffmpeg.stderr.on("data", (data) => {
+      this.log.debug(`Snapshot: ${data.toString()}`);
+    });
+
+    ffmpeg.on("close", (code) => {
+      if (code === 0 && imageBuffer.length > 0) {
+        callback(undefined, imageBuffer);
+      } else {
+        this.log.warn(`Snapshot failed with code ${code}`);
+        callback(new Error("Snapshot failed"));
+      }
+    });
+
+    ffmpeg.on("error", (error) => {
+      this.log.error(`Snapshot error: ${error.message}`);
+      callback(error);
+    });
+  }
+
+  /**
+   * Prepare stream for HomeKit video
+   */
+  prepareStream(request, callback) {
+    const sessionId = request.sessionID;
+
+    const sessionInfo = {
+      address: request.targetAddress,
+      videoPort: request.video.port,
+      videoCryptoSuite: request.video.srtpCryptoSuite,
+      videoSRTP: Buffer.concat([
+        request.video.srtp_key,
+        request.video.srtp_salt,
+      ]),
+      videoSSRC: Math.floor(Math.random() * 0xffffffff),
+    };
+
+    if (request.audio) {
+      sessionInfo.audioPort = request.audio.port;
+      sessionInfo.audioSRTP = Buffer.concat([
+        request.audio.srtp_key,
+        request.audio.srtp_salt,
+      ]);
+      sessionInfo.audioSSRC = Math.floor(Math.random() * 0xffffffff);
+    }
+
+    this.pendingSessions[sessionId] = sessionInfo;
+
+    const response = {
+      video: {
+        port: request.video.port,
+        ssrc: sessionInfo.videoSSRC,
+        srtp_key: request.video.srtp_key,
+        srtp_salt: request.video.srtp_salt,
+      },
+    };
+
+    if (request.audio) {
+      response.audio = {
+        port: request.audio.port,
+        ssrc: sessionInfo.audioSSRC,
+        srtp_key: request.audio.srtp_key,
+        srtp_salt: request.audio.srtp_salt,
+      };
+    }
+
+    callback(response);
+  }
+
+  /**
+   * Handle stream start/stop requests
+   */
+  handleStreamRequest(request, callback) {
+    const sessionId = request.sessionID;
+
+    if (request.type === "start") {
+      const sessionInfo = this.pendingSessions[sessionId];
+      if (!sessionInfo) {
+        callback(new Error("No pending session"));
+        return;
+      }
+
+      const width = request.video.width;
+      const height = request.video.height;
+      const fps = Math.min(request.video.fps, 30);
+      const bitrate = Math.min(request.video.max_bit_rate, 300);
+
+      this.log.info(`Starting doorbell stream: ${width}x${height}@${fps}fps`);
+
+      // Build FFmpeg command for streaming alert image
+      const ffmpegArgs = [
+        ...this.doorbellSource.split(" "),
+        "-map", "0:v",
+        "-vcodec", "libx264",
+        "-pix_fmt", "yuv420p",
+        "-r", fps.toString(),
+        "-tune", "zerolatency",
+        "-preset", "ultrafast",
+        "-vf", `scale=${width}:${height}`,
+        "-b:v", `${bitrate}k`,
+        "-bufsize", `${bitrate * 2}k`,
+        "-maxrate", `${bitrate}k`,
+        "-payload_type", "99",
+        "-ssrc", sessionInfo.videoSSRC.toString(),
+        "-f", "rtp",
+        "-srtp_out_suite", "AES_CM_128_HMAC_SHA1_80",
+        "-srtp_out_params", sessionInfo.videoSRTP.toString("base64"),
+        `srtp://${sessionInfo.address}:${sessionInfo.videoPort}?rtcpport=${sessionInfo.videoPort}&pkt_size=1316`,
+      ];
+
+      this.log.debug(`FFmpeg: ${this.videoProcessor} ${ffmpegArgs.join(" ")}`);
+
+      const ffmpeg = spawn(this.videoProcessor, ffmpegArgs, {
+        env: process.env,
+      });
+
+      ffmpeg.stderr.on("data", (data) => {
+        this.log.debug(`Stream: ${data.toString()}`);
+      });
+
+      ffmpeg.on("error", (error) => {
+        this.log.error(`Stream error: ${error.message}`);
+      });
+
+      ffmpeg.on("close", (code) => {
+        if (code && code !== 255) {
+          this.log.warn(`Stream ended with code ${code}`);
+        }
+        delete this.ongoingSessions[sessionId];
+      });
+
+      this.ongoingSessions[sessionId] = ffmpeg;
+      delete this.pendingSessions[sessionId];
+      callback();
+    } else if (request.type === "stop") {
+      const ffmpeg = this.ongoingSessions[sessionId];
+      if (ffmpeg) {
+        ffmpeg.kill("SIGKILL");
+        delete this.ongoingSessions[sessionId];
+      }
+      callback();
+    } else {
+      callback();
+    }
+  }
+
   triggerTest() {
-    this.log.info(`🧪 TEST ALERT TRIGGERED`);
+    this.log.info(`TEST ALERT TRIGGERED`);
     this.isAlertActive = true;
     this.alertActiveCities =
       this.selectedCities.length > 0 ? [this.selectedCities[0]] : ["Test"];
@@ -928,13 +1171,17 @@ class RedAlertPlugin {
       Characteristic.ContactSensorState,
       Characteristic.ContactSensorState.CONTACT_NOT_DETECTED
     );
+
+    // Ring Apple TV doorbell for PiP overlay notification
+    this.ringDoorbell(ALERT_TYPES.TEST, this.alertActiveCities);
+
     if (this.useChromecast) {
       this.playChromecastMedia(ALERT_TYPES.TEST);
     }
     setTimeout(() => {
       this.isAlertActive = false;
       this.alertActiveCities = [];
-      this.log.info("✅ Test alert reset");
+      this.log.info("Test alert reset");
       this.service.updateCharacteristic(
         Characteristic.ContactSensorState,
         Characteristic.ContactSensorState.CONTACT_DETECTED

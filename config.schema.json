@@ -2,7 +2,7 @@
     "pluginAlias": "RedAlert",
     "pluginType": "accessory",
     "singular": true,
-    "headerDisplay": "Red Alert Plugin v4.0.0 - Tzofar WebSocket Integration for Israeli Home Front Command alerts with HomeKit and Chromecast support.",
+    "headerDisplay": "Red Alert Plugin v4.1.0 - Israeli Home Front Command alerts with Apple TV PiP notifications, HomeKit, and Chromecast support. Enable Apple TV Doorbell to receive alert overlays while watching Netflix!",
     "footerDisplay": "For more information visit the [plugin homepage](https://github.com/yalihart/homebridge-red-alert).",
     "schema": {
         "type": "object",
@@ -68,6 +68,43 @@
                 "type": "string",
                 "placeholder": "http://192.168.1.100:8095",
                 "description": "Override auto-detected base URL for media server"
+            },
+            "appleTVDoorbell": {
+                "title": "Apple TV Doorbell Settings",
+                "type": "object",
+                "description": "Enable doorbell camera to receive PiP overlay notifications on Apple TV while watching Netflix or other apps",
+                "properties": {
+                    "enabled": {
+                        "title": "Enable Apple TV Doorbell",
+                        "type": "boolean",
+                        "default": false,
+                        "description": "When enabled, alerts will trigger a doorbell notification that appears as a PiP overlay on Apple TV"
+                    },
+                    "videoProcessor": {
+                        "title": "Video Processor Path",
+                        "type": "string",
+                        "default": "ffmpeg",
+                        "description": "Path to ffmpeg binary"
+                    },
+                    "videoSource": {
+                        "title": "Video Source",
+                        "type": "string",
+                        "description": "FFmpeg input source for video stream. Leave empty for default alert image"
+                    },
+                    "stillImageSource": {
+                        "title": "Still Image Source",
+                        "type": "string",
+                        "description": "FFmpeg input source for snapshot. Leave empty for default alert image"
+                    },
+                    "throttleSeconds": {
+                        "title": "Throttle (seconds)",
+                        "type": "integer",
+                        "default": 10,
+                        "minimum": 5,
+                        "maximum": 300,
+                        "description": "Minimum seconds between doorbell rings to prevent spam"
+                    }
+                }
             },
             "tzofar": {
                 "title": "Tzofar WebSocket Settings",
@@ -404,6 +441,19 @@
                 "chromecastTimeout",
                 "serverPort",
                 "baseUrl"
+            ]
+        },
+        {
+            "type": "section",
+            "title": "Apple TV Doorbell (PiP Overlay)",
+            "expandable": true,
+            "expanded": true,
+            "items": [
+                "appleTVDoorbell.enabled",
+                "appleTVDoorbell.throttleSeconds",
+                "appleTVDoorbell.videoProcessor",
+                "appleTVDoorbell.videoSource",
+                "appleTVDoorbell.stillImageSource"
             ]
         },
         {
