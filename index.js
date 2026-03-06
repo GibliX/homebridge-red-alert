@@ -30,6 +30,9 @@ const ip = require("ip");
 
 let Service, Characteristic, UUIDGen, StreamController;
 
+// Global reference to camera platform for triggering doorbell from accessory
+let cameraPlaftormInstance = null;
+
 // Alert types and their canonical titles (in Hebrew)
 const ALERT_TYPES = {
   PRIMARY: "primary",
@@ -973,10 +976,6 @@ class RedAlertPlugin {
    * Throttled to prevent excessive ringing
    */
   ringDoorbell(alertType, cities) {
-    if (!this.useAppleTVDoorbell || !this.doorbellService) {
-      return;
-    }
-
     const now = Date.now();
     if (now - this.lastDoorbellRing < this.doorbellThrottle) {
       this.log.debug(
@@ -992,10 +991,12 @@ class RedAlertPlugin {
       `Ringing Apple TV doorbell for ${alertType}: ${cities.join(", ")}`
     );
 
-    // Trigger the doorbell event - this causes Apple TV to show PiP notification
-    this.doorbellService
-      .getCharacteristic(Characteristic.ProgrammableSwitchEvent)
-      .setValue(Characteristic.ProgrammableSwitchEvent.SINGLE_PRESS);
+    // Trigger the camera platform doorbell if available
+    if (cameraPlaftormInstance) {
+      cameraPlaftormInstance.ringDoorbell(alertType);
+    } else {
+      this.log.warn("Camera platform not available - add RedAlertCamera platform to config");
+    }
   }
 
   /**
@@ -1864,6 +1865,9 @@ class RedAlertCameraPlatform {
 
     // Alert state
     this.currentState = "idle"; // idle, pre-alert, alert
+
+    // Store global reference so accessory can trigger doorbell
+    cameraPlaftormInstance = this;
 
     if (api) {
       api.on("didFinishLaunching", () => {
