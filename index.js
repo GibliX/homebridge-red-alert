@@ -377,26 +377,11 @@ class RedAlertPlugin {
     // --- HomeKit services
     this.service = new Service.ContactSensor(this.name);
 
-    // Test switches for different alert types
-    this.testSwitchService = new Service.Switch(`${this.name} Test Alert`, "test-alert");
+    // Test switch for triggering test alerts
+    this.testSwitchService = new Service.Switch(`${this.name} Test`, "test");
     this.testSwitchService
       .getCharacteristic(Characteristic.On)
       .on("set", this.handleTestSwitch.bind(this));
-
-    this.testPreAlertSwitch = new Service.Switch(`${this.name} Test Pre-Alert`, "test-pre-alert");
-    this.testPreAlertSwitch
-      .getCharacteristic(Characteristic.On)
-      .on("set", this.handleTestPreAlert.bind(this));
-
-    this.testDroneSwitch = new Service.Switch(`${this.name} Test Drone`, "test-drone");
-    this.testDroneSwitch
-      .getCharacteristic(Characteristic.On)
-      .on("set", this.handleTestDrone.bind(this));
-
-    this.testExitSwitch = new Service.Switch(`${this.name} Test Exit`, "test-exit");
-    this.testExitSwitch
-      .getCharacteristic(Characteristic.On)
-      .on("set", this.handleTestExit.bind(this));
 
     this.earlyWarningService = new Service.ContactSensor(
       `${this.name} Early Warning`,
@@ -924,9 +909,6 @@ class RedAlertPlugin {
       informationService,
       this.service,
       this.testSwitchService,
-      this.testPreAlertSwitch,
-      this.testDroneSwitch,
-      this.testExitSwitch,
       this.earlyWarningService,
       this.exitNotificationService,
     ];
@@ -1205,115 +1187,6 @@ class RedAlertPlugin {
       this.alertActiveCities = [];
       this.log.info("Test alert reset");
       this.service.updateCharacteristic(
-        Characteristic.ContactSensorState,
-        Characteristic.ContactSensorState.CONTACT_DETECTED
-      );
-    }, 10000);
-  }
-
-  // Test Pre-Alert (Early Warning)
-  handleTestPreAlert(on, callback) {
-    if (on) {
-      this.log.info("Test Pre-Alert triggered");
-      this.triggerTestPreAlert();
-      setTimeout(() => {
-        this.testPreAlertSwitch.updateCharacteristic(Characteristic.On, false);
-      }, 2000);
-    }
-    callback(null);
-  }
-
-  triggerTestPreAlert() {
-    this.log.info("TEST PRE-ALERT TRIGGERED");
-    const cities = this.selectedCities.length > 0 ? [this.selectedCities[0]] : ["Test"];
-
-    this.isEarlyWarningActive = true;
-    this.earlyWarningActiveCities = cities;
-    this.earlyWarningService.updateCharacteristic(
-      Characteristic.ContactSensorState,
-      Characteristic.ContactSensorState.CONTACT_NOT_DETECTED
-    );
-
-    this.ringDoorbell(ALERT_TYPES.EARLY_WARNING, cities);
-
-    setTimeout(() => {
-      this.isEarlyWarningActive = false;
-      this.earlyWarningActiveCities = [];
-      this.log.info("Test pre-alert reset");
-      this.earlyWarningService.updateCharacteristic(
-        Characteristic.ContactSensorState,
-        Characteristic.ContactSensorState.CONTACT_DETECTED
-      );
-    }, 10000);
-  }
-
-  // Test Drone Alert (Hostile Aircraft)
-  handleTestDrone(on, callback) {
-    if (on) {
-      this.log.info("Test Drone Alert triggered");
-      this.triggerTestDrone();
-      setTimeout(() => {
-        this.testDroneSwitch.updateCharacteristic(Characteristic.On, false);
-      }, 2000);
-    }
-    callback(null);
-  }
-
-  triggerTestDrone() {
-    this.log.info("TEST DRONE ALERT TRIGGERED");
-    const cities = this.selectedCities.length > 0 ? [this.selectedCities[0]] : ["Test"];
-
-    this.isAlertActive = true;
-    this.alertActiveCities = cities;
-    this.service.updateCharacteristic(
-      Characteristic.ContactSensorState,
-      Characteristic.ContactSensorState.CONTACT_NOT_DETECTED
-    );
-
-    // Drone uses primary alert type but could be differentiated later
-    this.ringDoorbell("drone", cities);
-
-    setTimeout(() => {
-      this.isAlertActive = false;
-      this.alertActiveCities = [];
-      this.log.info("Test drone alert reset");
-      this.service.updateCharacteristic(
-        Characteristic.ContactSensorState,
-        Characteristic.ContactSensorState.CONTACT_DETECTED
-      );
-    }, 10000);
-  }
-
-  // Test Exit Notification
-  handleTestExit(on, callback) {
-    if (on) {
-      this.log.info("Test Exit triggered");
-      this.triggerTestExit();
-      setTimeout(() => {
-        this.testExitSwitch.updateCharacteristic(Characteristic.On, false);
-      }, 2000);
-    }
-    callback(null);
-  }
-
-  triggerTestExit() {
-    this.log.info("TEST EXIT NOTIFICATION TRIGGERED");
-    const cities = this.selectedCities.length > 0 ? [this.selectedCities[0]] : ["Test"];
-
-    this.isExitNotificationActive = true;
-    this.exitNotificationActiveCities = cities;
-    this.exitNotificationService.updateCharacteristic(
-      Characteristic.ContactSensorState,
-      Characteristic.ContactSensorState.CONTACT_NOT_DETECTED
-    );
-
-    this.ringDoorbell(ALERT_TYPES.EXIT_NOTIFICATION, cities);
-
-    setTimeout(() => {
-      this.isExitNotificationActive = false;
-      this.exitNotificationActiveCities = [];
-      this.log.info("Test exit notification reset");
-      this.exitNotificationService.updateCharacteristic(
         Characteristic.ContactSensorState,
         Characteristic.ContactSensorState.CONTACT_DETECTED
       );
@@ -2079,16 +1952,20 @@ class RedAlertCameraPlatform {
 
     this.log.info(`Ringing doorbell for ${alertType}, camera state: ${this.currentState}`);
 
-    // Trigger doorbell
-    this.doorbellService
-      .getCharacteristic(Characteristic.ProgrammableSwitchEvent)
-      .updateValue(Characteristic.ProgrammableSwitchEvent.SINGLE_PRESS);
+    // Small delay to ensure snapshot reflects new state before doorbell rings
+    setTimeout(() => {
+      // Trigger doorbell
+      this.doorbellService
+        .getCharacteristic(Characteristic.ProgrammableSwitchEvent)
+        .updateValue(Characteristic.ProgrammableSwitchEvent.SINGLE_PRESS);
+    }, 300);
 
-    // Reset to idle after 60 seconds
+    // Reset to idle after 15 seconds (shortly after test alerts reset)
     setTimeout(() => {
       this.currentState = "idle";
       if (this.delegate) this.delegate.setCurrentState("idle");
-    }, 60000);
+      this.log.debug("Camera state reset to idle");
+    }, 15000);
   }
 
   configureAccessory(accessory) {
@@ -2121,13 +1998,13 @@ class RedAlertStreamingDelegate {
       case "alert":
         return path.join(this.mediaPath, "alert-still.png");
       case "pre-alert":
-        return path.join(this.mediaPath, "pre-alert.png");
+        return path.join(this.mediaPath, "early-alert.png");
       case "drone":
-        return path.join(this.mediaPath, "drone.png");
+        return path.join(this.mediaPath, "alert-still.png");
       case "exit":
         return path.join(this.mediaPath, "exit.png");
       default:
-        return path.join(this.mediaPath, "idle.png");
+        return path.join(this.mediaPath, "alert-still.png");
     }
   }
 
