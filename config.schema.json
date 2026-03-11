@@ -1,8 +1,8 @@
 {
-    "pluginAlias": "RedAlertCamera",
-    "pluginType": "platform",
+    "pluginAlias": "RedAlert",
+    "pluginType": "accessory",
     "singular": true,
-    "headerDisplay": "Red Alert Plugin v4.1.0 - Israeli Home Front Command alerts with Apple TV PiP notifications, HomeKit, and Chromecast support. Enable Apple TV Doorbell to receive alert overlays while watching Netflix!",
+    "headerDisplay": "Red Alert Plugin v4.1.0 - Israeli Home Front Command alerts with Apple TV PiP notifications, HomeKit, and Chromecast support.",
     "footerDisplay": "For more information visit the [plugin homepage](https://github.com/yalihart/homebridge-red-alert).",
     "schema": {
         "type": "object",

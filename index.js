@@ -26,12 +26,11 @@ const ChromecastAPI = require("chromecast-api");
 const os = require("os");
 const crypto = require("crypto");
 const { spawn } = require("child_process");
-const ip = require("ip");
 
-let Service, Characteristic, UUIDGen, StreamController;
+let Service, Characteristic, UUIDGen;
 
 // Global reference to camera platform for triggering doorbell from accessory
-let cameraPlaftormInstance = null;
+let cameraPlatformInstance = null;
 
 // Alert types and their canonical titles (in Hebrew)
 const ALERT_TYPES = {
@@ -366,11 +365,6 @@ class RedAlertPlugin {
 
     // --- Apple TV Doorbell Configuration
     this.useAppleTVDoorbell = config.appleTVDoorbell?.enabled === true;
-    this.doorbellSource = config.appleTVDoorbell?.videoSource ||
-      `-loop 1 -i ${path.join(__dirname, "media", "alert-still.png")}`;
-    this.doorbellStillSource = config.appleTVDoorbell?.stillImageSource ||
-      `-i ${path.join(__dirname, "media", "alert-still.png")}`;
-    this.videoProcessor = config.appleTVDoorbell?.videoProcessor || "ffmpeg";
     this.doorbellThrottle = (config.appleTVDoorbell?.throttleSeconds || 10) * 1000;
     this.lastDoorbellRing = 0;
 
@@ -391,18 +385,6 @@ class RedAlertPlugin {
       `${this.name} Exit Notification`,
       "exit-notification"
     );
-
-    // --- Apple TV Doorbell service (triggers PiP overlay on Apple TV)
-    if (this.useAppleTVDoorbell) {
-      this.doorbellService = new Service.Doorbell(`${this.name} Doorbell`);
-      this.doorbellService
-        .getCharacteristic(Characteristic.ProgrammableSwitchEvent)
-        .on("get", this.handleDoorbellGet.bind(this));
-
-      // Camera streaming for doorbell
-      this.pendingSessions = {};
-      this.ongoingSessions = {};
-    }
 
     // --- Startup logic
     if (this.api) {
@@ -913,21 +895,7 @@ class RedAlertPlugin {
       this.exitNotificationService,
     ];
 
-    // Add doorbell service if enabled
-    if (this.useAppleTVDoorbell && this.doorbellService) {
-      services.push(this.doorbellService);
-      this.log.info("Apple TV doorbell service enabled");
-    }
-
     return services;
-  }
-
-  /**
-   * Configure camera source for doorbell streaming
-   * Called by Homebridge when accessory is published
-   */
-  configureCameraSource(cameraSource) {
-    this.cameraSource = cameraSource;
   }
 
   getAlertState(callback) {
@@ -970,10 +938,6 @@ class RedAlertPlugin {
 
   // --- Apple TV Doorbell Methods ---
 
-  handleDoorbellGet(callback) {
-    callback(null, null);
-  }
-
   /**
    * Ring the doorbell to trigger Apple TV PiP notification
    * Throttled to prevent excessive ringing
@@ -995,174 +959,10 @@ class RedAlertPlugin {
     );
 
     // Trigger the camera platform doorbell if available
-    if (cameraPlaftormInstance) {
-      cameraPlaftormInstance.ringDoorbell(alertType);
+    if (cameraPlatformInstance) {
+      cameraPlatformInstance.ringDoorbell(alertType);
     } else {
       this.log.warn("Camera platform not available - add RedAlertCamera platform to config");
-    }
-  }
-
-  /**
-   * Handle snapshot requests for the doorbell camera
-   */
-  handleSnapshotRequest(request, callback) {
-    const resolution = `${request.width}x${request.height}`;
-    this.log.debug(`Doorbell snapshot requested: ${resolution}`);
-
-    const ffmpegArgs = `${this.doorbellStillSource} -t 1 -s ${resolution} -f image2 -`.split(" ");
-
-    const ffmpeg = spawn(this.videoProcessor, ffmpegArgs, {
-      env: process.env,
-    });
-
-    let imageBuffer = Buffer.alloc(0);
-
-    ffmpeg.stdout.on("data", (data) => {
-      imageBuffer = Buffer.concat([imageBuffer, data]);
-    });
-
-    ffmpeg.stderr.on("data", (data) => {
-      this.log.debug(`Snapshot: ${data.toString()}`);
-    });
-
-    ffmpeg.on("close", (code) => {
-      if (code === 0 && imageBuffer.length > 0) {
-        callback(undefined, imageBuffer);
-      } else {
-        this.log.warn(`Snapshot failed with code ${code}`);
-        callback(new Error("Snapshot failed"));
-      }
-    });
-
-    ffmpeg.on("error", (error) => {
-      this.log.error(`Snapshot error: ${error.message}`);
-      callback(error);
-    });
-  }
-
-  /**
-   * Prepare stream for HomeKit video
-   */
-  prepareStream(request, callback) {
-    const sessionId = request.sessionID;
-
-    const sessionInfo = {
-      address: request.targetAddress,
-      videoPort: request.video.port,
-      videoCryptoSuite: request.video.srtpCryptoSuite,
-      videoSRTP: Buffer.concat([
-        request.video.srtp_key,
-        request.video.srtp_salt,
-      ]),
-      videoSSRC: Math.floor(Math.random() * 0xffffffff),
-    };
-
-    if (request.audio) {
-      sessionInfo.audioPort = request.audio.port;
-      sessionInfo.audioSRTP = Buffer.concat([
-        request.audio.srtp_key,
-        request.audio.srtp_salt,
-      ]);
-      sessionInfo.audioSSRC = Math.floor(Math.random() * 0xffffffff);
-    }
-
-    this.pendingSessions[sessionId] = sessionInfo;
-
-    const response = {
-      video: {
-        port: request.video.port,
-        ssrc: sessionInfo.videoSSRC,
-        srtp_key: request.video.srtp_key,
-        srtp_salt: request.video.srtp_salt,
-      },
-    };
-
-    if (request.audio) {
-      response.audio = {
-        port: request.audio.port,
-        ssrc: sessionInfo.audioSSRC,
-        srtp_key: request.audio.srtp_key,
-        srtp_salt: request.audio.srtp_salt,
-      };
-    }
-
-    callback(response);
-  }
-
-  /**
-   * Handle stream start/stop requests
-   */
-  handleStreamRequest(request, callback) {
-    const sessionId = request.sessionID;
-
-    if (request.type === "start") {
-      const sessionInfo = this.pendingSessions[sessionId];
-      if (!sessionInfo) {
-        callback(new Error("No pending session"));
-        return;
-      }
-
-      const width = request.video.width;
-      const height = request.video.height;
-      const fps = Math.min(request.video.fps, 30);
-      const bitrate = Math.min(request.video.max_bit_rate, 300);
-
-      this.log.info(`Starting doorbell stream: ${width}x${height}@${fps}fps`);
-
-      // Build FFmpeg command for streaming alert image
-      const ffmpegArgs = [
-        ...this.doorbellSource.split(" "),
-        "-map", "0:v",
-        "-vcodec", "libx264",
-        "-pix_fmt", "yuv420p",
-        "-r", fps.toString(),
-        "-tune", "zerolatency",
-        "-preset", "ultrafast",
-        "-vf", `scale=${width}:${height}`,
-        "-b:v", `${bitrate}k`,
-        "-bufsize", `${bitrate * 2}k`,
-        "-maxrate", `${bitrate}k`,
-        "-payload_type", "99",
-        "-ssrc", sessionInfo.videoSSRC.toString(),
-        "-f", "rtp",
-        "-srtp_out_suite", "AES_CM_128_HMAC_SHA1_80",
-        "-srtp_out_params", sessionInfo.videoSRTP.toString("base64"),
-        `srtp://${sessionInfo.address}:${sessionInfo.videoPort}?rtcpport=${sessionInfo.videoPort}&pkt_size=1316`,
-      ];
-
-      this.log.debug(`FFmpeg: ${this.videoProcessor} ${ffmpegArgs.join(" ")}`);
-
-      const ffmpeg = spawn(this.videoProcessor, ffmpegArgs, {
-        env: process.env,
-      });
-
-      ffmpeg.stderr.on("data", (data) => {
-        this.log.debug(`Stream: ${data.toString()}`);
-      });
-
-      ffmpeg.on("error", (error) => {
-        this.log.error(`Stream error: ${error.message}`);
-      });
-
-      ffmpeg.on("close", (code) => {
-        if (code && code !== 255) {
-          this.log.warn(`Stream ended with code ${code}`);
-        }
-        delete this.ongoingSessions[sessionId];
-      });
-
-      this.ongoingSessions[sessionId] = ffmpeg;
-      delete this.pendingSessions[sessionId];
-      callback();
-    } else if (request.type === "stop") {
-      const ffmpeg = this.ongoingSessions[sessionId];
-      if (ffmpeg) {
-        ffmpeg.kill("SIGKILL");
-        delete this.ongoingSessions[sessionId];
-      }
-      callback();
-    } else {
-      callback();
     }
   }
 
@@ -1870,7 +1670,7 @@ class RedAlertCameraPlatform {
     this.currentState = "idle"; // idle, pre-alert, alert
 
     // Store global reference so accessory can trigger doorbell
-    cameraPlaftormInstance = this;
+    cameraPlatformInstance = this;
 
     if (api) {
       api.on("didFinishLaunching", () => {
