@@ -80,22 +80,6 @@
                         "default": false,
                         "description": "When enabled, alerts will trigger a doorbell notification that appears as a PiP overlay on Apple TV"
                     },
-                    "videoProcessor": {
-                        "title": "Video Processor Path",
-                        "type": "string",
-                        "default": "ffmpeg",
-                        "description": "Path to ffmpeg binary"
-                    },
-                    "videoSource": {
-                        "title": "Video Source",
-                        "type": "string",
-                        "description": "FFmpeg input source for video stream. Leave empty for default alert image"
-                    },
-                    "stillImageSource": {
-                        "title": "Still Image Source",
-                        "type": "string",
-                        "description": "FFmpeg input source for snapshot. Leave empty for default alert image"
-                    },
                     "throttleSeconds": {
                         "title": "Throttle (seconds)",
                         "type": "integer",

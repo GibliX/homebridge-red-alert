@@ -411,9 +411,6 @@ After alert ends, camera returns to idle state
 |---------------------|-----------------------------------------------------------------------------------------------|
 | `enabled`           | Enable/disable Apple TV doorbell notifications (default: false)                              |
 | `throttleSeconds`   | Minimum seconds between doorbell rings to prevent spam (default: 10)                         |
-| `videoProcessor`    | Path to ffmpeg binary (default: "ffmpeg")                                                    |
-| `videoSource`       | Custom FFmpeg input source for video stream (optional)                                       |
-| `stillImageSource`  | Custom FFmpeg input source for snapshots (optional)                                          |
 
 ### Alert Type Images
 

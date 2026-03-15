@@ -943,6 +943,10 @@ class RedAlertPlugin {
    * Throttled to prevent excessive ringing
    */
   ringDoorbell(alertType, cities) {
+    if (!this.useAppleTVDoorbell) {
+      return;
+    }
+
     const now = Date.now();
     if (now - this.lastDoorbellRing < this.doorbellThrottle) {
       this.log.debug(
@@ -1662,9 +1666,9 @@ class RedAlertCameraPlatform {
     this.api = api;
     this.accessories = [];
 
-    this.name = config.name || "Red Alert Camera";
-    this.videoProcessor = config.videoProcessor || "ffmpeg";
-    this.mediaPath = config.mediaPath || path.join(__dirname, "media");
+    this.name = this.config.name || "Red Alert Camera";
+    this.videoProcessor = this.config.videoProcessor || "ffmpeg";
+    this.mediaPath = this.config.mediaPath || path.join(__dirname, "media");
 
     // Alert state
     this.currentState = "idle"; // idle, pre-alert, alert
@@ -1881,7 +1885,7 @@ class RedAlertStreamingDelegate {
         "-tune", "stillimage",
         "-preset", "ultrafast",
         "-b:v", `${request.video.max_bit_rate}k`,
-        "-payload_type", "99",
+        "-payload_type", String(request.video.pt),
         "-ssrc", session.videoSSRC.toString(),
         "-f", "rtp",
         "-srtp_out_suite", "AES_CM_128_HMAC_SHA1_80",
