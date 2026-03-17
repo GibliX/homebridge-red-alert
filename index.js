@@ -758,6 +758,10 @@ class RedAlertPlugin {
     this.log.info(
       `🟡 EARLY WARNING TRIGGERED for areas: ${debouncedCities.join(", ")}`
     );
+
+    // Ring Apple TV doorbell for PiP overlay notification
+    this.ringDoorbell(ALERT_TYPES.EARLY_WARNING, debouncedCities);
+
     this.triggerEarlyWarning(debouncedCities);
   }
 
@@ -814,6 +818,10 @@ class RedAlertPlugin {
     this.log.info(
       `🟢 EXIT NOTIFICATION TRIGGERED for areas: ${debouncedCities.join(", ")}`
     );
+
+    // Ring Apple TV doorbell for PiP overlay notification
+    this.ringDoorbell(ALERT_TYPES.EXIT_NOTIFICATION, debouncedCities);
+
     this.triggerExitNotification(debouncedCities);
   }
 

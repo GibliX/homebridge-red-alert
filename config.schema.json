@@ -434,10 +434,7 @@
             "expanded": true,
             "items": [
                 "appleTVDoorbell.enabled",
-                "appleTVDoorbell.throttleSeconds",
-                "appleTVDoorbell.videoProcessor",
-                "appleTVDoorbell.videoSource",
-                "appleTVDoorbell.stillImageSource"
+                "appleTVDoorbell.throttleSeconds"
             ]
         },
         {
