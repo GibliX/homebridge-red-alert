@@ -1,6 +1,8 @@
-# 🚨 Homebridge Red Alert Plugin 🚨
+# 🚨 Homebridge Red Alert Enhanced 🚨
 
-**Red Alert** is a Homebridge plugin for real-time civil defense alerts in Israel, supporting Chromecast devices and HomeKit integration. It provides real-time notifications for primary missile alerts, early warnings, and exit (all-clear) notifications via the Tzofar WebSocket API. All alert types are fully configurable with per-device and per-alert time and volume controls.
+> **Fork Notice**: This is a fork of [yalihart/homebridge-red-alert](https://github.com/yalihart/homebridge-red-alert) with added Apple TV Picture-in-Picture notification support. All credit for the original plugin goes to [@yalihart](https://github.com/yalihart).
+
+**Red Alert Enhanced** is a Homebridge plugin for real-time civil defense alerts in Israel, supporting Chromecast devices and HomeKit integration. It provides real-time notifications for primary missile alerts, early warnings, and exit (all-clear) notifications via the Tzofar WebSocket API. All alert types are fully configurable with per-device and per-alert time and volume controls.
 
 https://youtu.be/Bst3QFTlfBo
 
@@ -64,16 +66,26 @@ https://youtu.be/Bst3QFTlfBo
 
 ## 🛠️ Installation
 
-**1. Clone this repository into your Homebridge `node_modules` directory (recommended for advanced users):**
+**Option 1: Install via npm (Recommended)**
+
+```bash
+npm install -g homebridge-red-alert-enhanced
+```
+
+**Option 2: Install via Homebridge UI**
+
+Search for `homebridge-red-alert-enhanced` in the Homebridge UI plugins tab.
+
+**Option 3: Clone from GitHub**
 
 ```bash
 cd /path/to/homebridge/node_modules/
-git clone https://github.com/yalihart/homebridge-red-alert.git
-cd homebridge-red-alert
+git clone https://github.com/GibliX/homebridge-red-alert.git homebridge-red-alert-enhanced
+cd homebridge-red-alert-enhanced
 npm install
 ```
 
-**2. Restart Homebridge.**
+**After installation, restart Homebridge.**
 
 **3. Place your alert media files**
 
