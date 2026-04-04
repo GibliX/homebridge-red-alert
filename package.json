@@ -44,5 +44,10 @@
   "engines": {
     "homebridge": "^1.8.0",
     "node": ">=18.0.0"
+  },
+  "homebridge": {
+    "pluginAlias": "RedAlertCamera",
+    "pluginType": "platform",
+    "singular": true
   }
 }
