@@ -109,12 +109,12 @@ By default, the plugin looks for the following files in
 
 ## ⚙️ Configuration
 
-Edit your Homebridge `config.json` and add an accessory of type `RedAlert`.
+Edit your Homebridge `config.json` and add a platform of type `RedAlertCamera` to your `platforms` array.
 Below is a **comprehensive configuration** that demonstrates all features:
 
 ```json
 {
-  "accessory": "RedAlert",
+  "platform": "RedAlertCamera",
   "name": "Red Alert",
   "cities": ["רעננה"],
   "useChromecast": true,
@@ -219,7 +219,7 @@ Below is a **comprehensive configuration** that demonstrates all features:
 
 | Property                      | Description                                                                                                               |
 |-------------------------------|---------------------------------------------------------------------------------------------------------------------------|
-| `name`                        | Accessory name as seen in HomeKit                                                                                         |
+| `name`                        | Platform name as seen in HomeKit                                                                                          |
 | `cities`                      | Array of cities to monitor (exact keys from included cities.json). If omitted, all cities are monitored.                 |
 | `citiesJsonPath`              | Path to cities.json file (defaults to included file in plugin directory)                                                  |
 | `useChromecast`               | Enable/disable Chromecast playback                                                                                        |
@@ -380,11 +380,13 @@ After alert ends, camera returns to idle state
 
 ### Setup
 
-**1. Enable Apple TV Doorbell in config:**
+**1. Add the RedAlertCamera platform to your config:**
+
+Add the following to your `platforms` array in `config.json`:
 
 ```json
 {
-  "accessory": "RedAlert",
+  "platform": "RedAlertCamera",
   "name": "Red Alert",
   "cities": ["רעננה"],
   "appleTVDoorbell": {
@@ -394,26 +396,13 @@ After alert ends, camera returns to idle state
 }
 ```
 
-**2. Add the camera platform to your config:**
-
-```json
-{
-  "platforms": [
-    {
-      "platform": "RedAlertCamera",
-      "name": "Siren Camera"
-    }
-  ]
-}
-```
-
-**3. Restart Homebridge and add the camera in Home app:**
+**2. Restart Homebridge and add the camera in Home app:**
 - Open Home app on iPhone/iPad
 - Tap "+" then "Add Accessory"
 - Scan the QR code from Homebridge UI or enter the pairing code
 - Assign the camera to the same room as your Apple TV
 
-**4. Configure Apple TV notifications:**
+**3. Configure Apple TV notifications:**
 - On Apple TV: Settings > Notifications > Allow notifications from Home
 - The camera should appear as a doorbell that can send notifications
 
@@ -621,7 +610,7 @@ Enable debug logging to see detailed behavior:
 **Minimal Configuration:**
 ```json
 {
-  "accessory": "RedAlert",
+  "platform": "RedAlertCamera",
   "name": "Red Alert",
   "cities": ["רעננה"]
 }
@@ -630,7 +619,7 @@ Enable debug logging to see detailed behavior:
 **Family Home with Multiple Rooms:**
 ```json
 {
-  "accessory": "RedAlert",
+  "platform": "RedAlertCamera",
   "name": "Red Alert",
   "cities": ["רעננה", "תל אביב - יפו"],
   "alerts": {
@@ -664,7 +653,7 @@ Enable debug logging to see detailed behavior:
 **Business/Office Setup:**
 ```json
 {
-  "accessory": "RedAlert",
+  "platform": "RedAlertCamera",
   "name": "Red Alert",
   "cities": ["תל אביב - יפו"],
   "alerts": {
@@ -685,7 +674,7 @@ Enable debug logging to see detailed behavior:
 **Apple TV Only Setup:**
 ```json
 {
-  "accessory": "RedAlert",
+  "platform": "RedAlertCamera",
   "name": "Red Alert",
   "cities": ["רעננה"],
   "useChromecast": false,
