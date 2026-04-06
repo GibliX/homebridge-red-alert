@@ -1912,7 +1912,14 @@ class RedAlertStreamingDelegate {
 
   handleSnapshotRequest(request, callback) {
     const currentImage = this.getCurrentImage();
-    this.log.debug(`Snapshot: ${request.width}x${request.height}, state: ${this.currentState}`);
+    this.log.info(`Snapshot requested: ${request.width}x${request.height}, state: ${this.currentState}, image: ${currentImage}`);
+
+    // Check if image exists
+    if (!fs.existsSync(currentImage)) {
+      this.log.error(`Snapshot image not found: ${currentImage}`);
+      callback(new Error("Image not found"));
+      return;
+    }
 
     const ffmpegArgs = [
       "-i", currentImage,
@@ -1922,22 +1929,32 @@ class RedAlertStreamingDelegate {
       "-"
     ];
 
+    this.log.info(`Running ffmpeg: ${this.videoProcessor} ${ffmpegArgs.join(" ")}`);
+
     const ffmpeg = spawn(this.videoProcessor, ffmpegArgs, { env: process.env });
     let imageBuffer = Buffer.alloc(0);
+    let stderrData = "";
 
     ffmpeg.stdout.on("data", (data) => {
       imageBuffer = Buffer.concat([imageBuffer, data]);
     });
 
+    ffmpeg.stderr.on("data", (data) => {
+      stderrData += data.toString();
+    });
+
     ffmpeg.on("close", (code) => {
       if (code === 0 && imageBuffer.length > 0) {
+        this.log.info(`Snapshot generated successfully: ${imageBuffer.length} bytes`);
         callback(undefined, imageBuffer);
       } else {
+        this.log.error(`Snapshot failed with code ${code}, stderr: ${stderrData}`);
         callback(new Error("Snapshot failed"));
       }
     });
 
     ffmpeg.on("error", (error) => {
+      this.log.error(`ffmpeg error: ${error.message}`);
       callback(error);
     });
   }
