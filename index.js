@@ -1656,12 +1656,68 @@ module.exports = (api) => {
   Characteristic = api.hap.Characteristic;
   UUIDGen = api.hap.uuid;
 
-  // Register main accessory (sensors)
-  api.registerAccessory("homebridge-red-alert", "RedAlert", RedAlertPlugin);
-
-  // Register platform for camera doorbell
+  // Register platform - this creates both the camera AND the sensors
   api.registerPlatform("homebridge-red-alert", "RedAlertCamera", RedAlertCameraPlatform);
+
+  // Keep accessory registration for backward compatibility with old configs
+  api.registerAccessory("homebridge-red-alert", "RedAlert", RedAlertPlugin);
 };
+
+/**
+ * RedAlertHandler - Alert handling logic for use with platform accessories
+ * This is used by RedAlertCameraPlatform to create sensors on a platform accessory
+ */
+class RedAlertHandler extends RedAlertPlugin {
+  constructor(log, config, api, platformAccessory, cameraPlatform) {
+    // Call parent constructor but we'll override service creation
+    super(log, config, api);
+
+    this.platformAccessory = platformAccessory;
+    this.cameraPlatform = cameraPlatform;
+
+    // Remove services created by parent and recreate on platform accessory
+    this.setupPlatformServices();
+  }
+
+  setupPlatformServices() {
+    // Get or add services on the platform accessory
+    this.service = this.platformAccessory.getService(Service.ContactSensor) ||
+      this.platformAccessory.addService(Service.ContactSensor, this.name, "primary");
+
+    this.testSwitchService = this.platformAccessory.getService(Service.Switch) ||
+      this.platformAccessory.addService(Service.Switch, `${this.name} Test`, "test");
+
+    this.earlyWarningService = this.platformAccessory.getServiceById(Service.ContactSensor, "early-warning") ||
+      this.platformAccessory.addService(Service.ContactSensor, `${this.name} Early Warning`, "early-warning");
+
+    this.exitNotificationService = this.platformAccessory.getServiceById(Service.ContactSensor, "exit-notification") ||
+      this.platformAccessory.addService(Service.ContactSensor, `${this.name} Exit Notification`, "exit-notification");
+
+    // Setup characteristics
+    this.testSwitchService
+      .getCharacteristic(Characteristic.On)
+      .on("set", this.handleTestSwitch.bind(this));
+
+    this.service
+      .getCharacteristic(Characteristic.ContactSensorState)
+      .on("get", this.getAlertState.bind(this));
+
+    this.earlyWarningService
+      .getCharacteristic(Characteristic.ContactSensorState)
+      .on("get", this.getEarlyWarningState.bind(this));
+
+    this.exitNotificationService
+      .getCharacteristic(Characteristic.ContactSensorState)
+      .on("get", this.getExitNotificationState.bind(this));
+
+    this.log.info("Platform services configured: Contact sensors + Test switch");
+  }
+
+  // Override getServices since we don't need it for platform accessories
+  getServices() {
+    return [];
+  }
+}
 
 /**
  * Camera Platform for Apple TV Doorbell notifications
@@ -1673,6 +1729,7 @@ class RedAlertCameraPlatform {
     this.config = config || {};
     this.api = api;
     this.accessories = [];
+    this.cachedAccessories = new Map();
 
     this.name = this.config.name || "Red Alert Camera";
     this.videoProcessor = this.config.videoProcessor || "ffmpeg";
@@ -1684,12 +1741,43 @@ class RedAlertCameraPlatform {
     // Store global reference so accessory can trigger doorbell
     cameraPlatformInstance = this;
 
+    // Create internal alert handler (RedAlertPlugin instance without accessory registration)
+    // This handles all the alert logic, WebSocket, Chromecast, etc.
+    this.alertHandler = null;
+
     if (api) {
       api.on("didFinishLaunching", () => {
         this.log.info("Red Alert Camera Platform loaded");
         this.setupCamera();
+        this.setupSensorsAccessory();
       });
     }
+  }
+
+  setupSensorsAccessory() {
+    // Create or restore the sensors accessory
+    const sensorName = this.config.name || "Red Alert";
+    const uuid = UUIDGen.generate(sensorName + "-sensors");
+
+    let sensorsAccessory = this.cachedAccessories.get(uuid);
+
+    if (!sensorsAccessory) {
+      this.log.info("Creating new sensors accessory: " + sensorName);
+      sensorsAccessory = new this.api.platformAccessory(sensorName, uuid);
+
+      // Add accessory info
+      sensorsAccessory.getService(Service.AccessoryInformation)
+        .setCharacteristic(Characteristic.Manufacturer, "Homebridge")
+        .setCharacteristic(Characteristic.Model, "Red Alert Tzofar")
+        .setCharacteristic(Characteristic.SerialNumber, "RA-SENSORS-001");
+
+      this.api.registerPlatformAccessories("homebridge-red-alert", "RedAlertCamera", [sensorsAccessory]);
+    }
+
+    // Create the internal alert handler with the sensors accessory
+    this.alertHandler = new RedAlertHandler(this.log, this.config, this.api, sensorsAccessory, this);
+
+    this.log.info("Red Alert sensors accessory configured");
   }
 
   setupCamera() {
@@ -1781,6 +1869,8 @@ class RedAlertCameraPlatform {
   }
 
   configureAccessory(accessory) {
+    this.log.info("Restoring cached accessory: " + accessory.displayName);
+    this.cachedAccessories.set(accessory.UUID, accessory);
     this.accessories.push(accessory);
   }
 }

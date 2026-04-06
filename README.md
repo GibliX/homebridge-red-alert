@@ -713,6 +713,11 @@ MIT
 
 ## 📋 Version History
 
+### v4.1.6 (2026-04)
+- **Feature**: Platform now creates both camera AND sensors/test switch
+- **Fix**: Users no longer need separate accessory config - platform handles everything
+- **Fix**: Removed deprecated crypto and path dependencies
+
 ### v4.1.3 (2026-04)
 - **Fix**: Config schema now correctly defines plugin as platform type
 - **Fix**: Homebridge UI no longer deletes platform configuration when making changes
