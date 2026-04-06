@@ -1,6 +1,6 @@
 {
   "name": "homebridge-red-alert-enhanced",
-  "version": "4.1.7",
+  "version": "4.1.8",
   "description": "Monitor Israeli Red Alert sirens with HomeKit integration, Apple TV doorbell notifications, and Chromecast playback. When alerts trigger, receive PiP overlay notifications on Apple TV even while watching Netflix.",
   "main": "index.js",
   "keywords": [
