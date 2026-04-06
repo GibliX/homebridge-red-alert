@@ -1,18 +1,18 @@
 {
-    "pluginAlias": "RedAlert",
-    "pluginType": "accessory",
+    "pluginAlias": "RedAlertCamera",
+    "pluginType": "platform",
     "singular": true,
-    "headerDisplay": "Red Alert Plugin v4.1.0 - Israeli Home Front Command alerts with Apple TV PiP notifications, HomeKit, and Chromecast support.",
-    "footerDisplay": "For more information visit the [plugin homepage](https://github.com/yalihart/homebridge-red-alert).",
+    "headerDisplay": "Red Alert Enhanced - Israeli civil defense alerts with Apple TV PiP notifications, HomeKit, and Chromecast support.",
+    "footerDisplay": "For more information visit the [plugin homepage](https://github.com/GibliX/homebridge-red-alert).",
     "schema": {
         "type": "object",
         "properties": {
             "name": {
-                "title": "Accessory Name",
+                "title": "Platform Name",
                 "type": "string",
                 "default": "Red Alert",
                 "required": true,
-                "description": "Name for the HomeKit accessory"
+                "description": "Name for the HomeKit platform"
             },
             "cities": {
                 "title": "Monitored Cities",
