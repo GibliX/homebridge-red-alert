@@ -34,11 +34,9 @@
   "dependencies": {
     "chromecast-api": "^0.4.2",
     "compression": "^1.8.0",
-    "crypto": "^1.0.1",
     "express": "^4.21.2",
     "fs-extra": "^11.3.0",
     "mdns-js": "^1.0.3",
-    "path": "^0.12.7",
     "ws": "^8.18.2"
   },
   "engines": {
