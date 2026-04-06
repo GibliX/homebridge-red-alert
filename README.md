@@ -713,6 +713,13 @@ MIT
 
 ## 📋 Version History
 
+### v4.1.3 (2026-04)
+- **Fix**: Config schema now correctly defines plugin as platform type
+- **Fix**: Homebridge UI no longer deletes platform configuration when making changes
+
+### v4.1.2 (2026-04)
+- **Docs**: Fixed all config examples to use `"platform": "RedAlertCamera"` instead of `"accessory": "RedAlert"`
+
 ### v4.1.0 (2026-03)
 - **Apple TV PiP Notifications**: New doorbell camera feature for Picture-in-Picture alerts on Apple TV
 - **RedAlertCamera Platform**: New camera platform for Apple TV integration
