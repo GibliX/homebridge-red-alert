@@ -66,50 +66,58 @@ https://youtu.be/Bst3QFTlfBo
 
 ## 🛠️ Installation
 
-**Option 1: Install via npm (Recommended)**
+**Option 1: Install via Homebridge UI (Recommended)**
+
+1. Open Homebridge UI in your browser
+2. Go to **Plugins** tab
+3. Search for `homebridge-red-alert-enhanced`
+4. Click **Install**
+5. Restart Homebridge
+
+**Option 2: Install via terminal**
 
 ```bash
-npm install -g homebridge-red-alert-enhanced
+sudo /opt/homebridge/bin/npm install homebridge-red-alert-enhanced
+sudo systemctl restart homebridge
 ```
 
-**Option 2: Install via Homebridge UI**
+> **Note for Raspberry Pi Zero**: If installation fails due to memory, add swap space first or install via Homebridge UI.
 
-Search for `homebridge-red-alert-enhanced` in the Homebridge UI plugins tab.
+---
 
-**Option 3: Clone from GitHub**
+## ⚙️ Quick Start
 
-```bash
-cd /path/to/homebridge/node_modules/
-git clone https://github.com/GibliX/homebridge-red-alert.git homebridge-red-alert-enhanced
-cd homebridge-red-alert-enhanced
-npm install
-```
+1. **Install** the plugin (see above)
+2. **Configure** through Homebridge UI:
+   - Go to **Plugins** → **Red Alert Enhanced** → **Settings**
+   - Add your cities (in Hebrew, e.g., "רעננה")
+   - Enable **Apple TV Doorbell** if you want PiP notifications
+   - Save and restart Homebridge
+3. **Add camera to Home app**:
+   - Open Home app on iPhone/iPad
+   - Tap **+** → **Add Accessory** → **More Options...**
+   - Enter pairing code from Homebridge UI
+   - **Important**: Assign camera to the same room as your Apple TV
+4. **Test**: Trigger the test switch in HomeKit and verify Apple TV shows notification with image
 
-**After installation, restart Homebridge.**
+---
 
-**3. Place your alert media files**
+## 📺 Apple TV Picture-in-Picture Notifications
 
-By default, the plugin looks for the following files in
-`<homebridge-root>/red-alert-media/`:
+This plugin creates a virtual doorbell camera that shows alert images as Picture-in-Picture overlays on Apple TV - even while watching Netflix or other apps.
 
-**Standard Alert Media:**
-- `alert.mp4` (primary alert)
-- `early.mp4` (early warning)
-- `exit.mp4` (exit notification)
-- `test.mp4` (test alert)
-
-**🏠 Shelter Instruction Media:**
-- `ballistic_closure.mp4` (shelter closure instructions)
-- `ballistic_windows_closed.mp4` (windows closed instructions)
-- `exit.mp4` (exit instructions - can be same as standard exit)
-
-> The plugin will auto-copy default media files if none exist.
+**Requirements:**
+- Apple TV 4K or Apple TV HD (tvOS 14+)
+- ffmpeg installed on Homebridge server (`sudo apt install ffmpeg`)
+- Camera assigned to same room as Apple TV in Home app
 
 ---
 
 ## ⚙️ Configuration
 
-Edit your Homebridge `config.json` and add a platform of type `RedAlertCamera` to your `platforms` array.
+The plugin is configured through the **Homebridge UI**. No manual config.json editing required.
+
+For advanced users, you can manually add a platform of type `RedAlertCamera` to your `platforms` array.
 Below is a **comprehensive configuration** that demonstrates all features:
 
 ```json
