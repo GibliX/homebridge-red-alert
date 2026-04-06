@@ -1921,42 +1921,16 @@ class RedAlertStreamingDelegate {
       return;
     }
 
-    const ffmpegArgs = [
-      "-i", currentImage,
-      "-vf", `scale=${request.width}:${request.height}`,
-      "-frames:v", "1",
-      "-f", "image2",
-      "-"
-    ];
-
-    this.log.info(`Running ffmpeg: ${this.videoProcessor} ${ffmpegArgs.join(" ")}`);
-
-    const ffmpeg = spawn(this.videoProcessor, ffmpegArgs, { env: process.env });
-    let imageBuffer = Buffer.alloc(0);
-    let stderrData = "";
-
-    ffmpeg.stdout.on("data", (data) => {
-      imageBuffer = Buffer.concat([imageBuffer, data]);
-    });
-
-    ffmpeg.stderr.on("data", (data) => {
-      stderrData += data.toString();
-    });
-
-    ffmpeg.on("close", (code) => {
-      if (code === 0 && imageBuffer.length > 0) {
-        this.log.info(`Snapshot generated successfully: ${imageBuffer.length} bytes`);
-        callback(undefined, imageBuffer);
-      } else {
-        this.log.error(`Snapshot failed with code ${code}, stderr: ${stderrData}`);
-        callback(new Error("Snapshot failed"));
-      }
-    });
-
-    ffmpeg.on("error", (error) => {
-      this.log.error(`ffmpeg error: ${error.message}`);
+    // Read image directly without ffmpeg - much faster on slow devices like Pi Zero
+    // HomeKit can handle PNG images and will resize as needed
+    try {
+      const imageBuffer = fs.readFileSync(currentImage);
+      this.log.info(`Snapshot read successfully: ${imageBuffer.length} bytes`);
+      callback(undefined, imageBuffer);
+    } catch (error) {
+      this.log.error(`Failed to read snapshot image: ${error.message}`);
       callback(error);
-    });
+    }
   }
 
   prepareStream(request, callback) {

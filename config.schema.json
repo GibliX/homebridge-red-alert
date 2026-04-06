@@ -27,12 +27,6 @@
                 "required": true,
                 "description": "List of Israeli cities to monitor for alerts (in Hebrew)"
             },
-            "citiesJsonPath": {
-                "title": "Cities Data File Path",
-                "type": "string",
-                "default": "cities.json",
-                "description": "Path to cities.json file containing city ID mappings"
-            },
             "useChromecast": {
                 "title": "Enable Chromecast",
                 "type": "boolean",

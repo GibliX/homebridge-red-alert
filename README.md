@@ -713,6 +713,10 @@ MIT
 
 ## 📋 Version History
 
+### v4.1.8 (2026-04)
+- **Fix**: Snapshot now reads image directly instead of using ffmpeg (much faster on Pi)
+- **Fix**: Removed citiesJsonPath from config schema (was causing errors)
+
 ### v4.1.6 (2026-04)
 - **Feature**: Platform now creates both camera AND sensors/test switch
 - **Fix**: Users no longer need separate accessory config - platform handles everything
